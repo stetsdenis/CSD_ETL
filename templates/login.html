@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login</title>
+</head>
+<body>
+    <h2>Login</h2>
+    <!-- Bottone "Authorize with Google" -->
+    <button id="startButton">Authorize with Google</button>
+
+    <script>
+        //event listener sul bottone per lanciare l'autenticazione
+        document.getElementById('startButton').addEventListener('click', function() {
+            // fetch = gestione delle chiamate asincrone basata sulle promise Javascript
+            fetch('/get-cookies', {
+                method: 'GET',
+                credentials: 'same-origin' // Include cookies
+            })
+            .then(cookieResponse => {      //.then gestisce il ritorno atteso di una Promise asincrona
+                if (cookieResponse.ok) {
+                    return cookieResponse.json();  //converte la risposta in formato JSON
+                } else {
+                    throw new Error('Failed to get cookies.');
+                }
+            })
+            .then(cookies => {
+                // estrai il token CSRF dalla risposta cookies
+                const csrfToken = cookies.csrfToken;
+
+                // Effettua una richiesta al backend Django 
+                fetch('/startOauth/', {
+                    method: 'POST',             // Siccome è una POST ho bisogno del token!!!
+                    headers: {
+                        'X-CSRFToken': csrfToken,           // Includo il token ottenuto sù
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => {
+                    if (response.ok) {
+                        return response.json();
+                    } else {
+                        throw new Error('Failed to fetch redirect URL.');
+                    }
+                })
+                .then(data => {
+                    if (data.redirect_url) { //data contiene il JSON restituito dalla richiesta al backend Django, 
+                        //e viene verificato se contiene un campo "redirect_url"
+                        window.location.href = data.redirect_url;
+                    } else {
+                        console.error('Missing redirect URL in response data.');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+            })
+            .catch(error => {
+                console.error('Si è verificato un errore nel recupero dei cookie:', error);
+            });
+        });
+    </script>
+</body>
+</html>

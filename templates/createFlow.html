@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Flow</title>
+    <style>
+        /* Stile per adattare la larghezza del select alla lunghezza del testo delle opzioni */
+        select {
+            width: auto;        /* Imposta la larghezza in base al testo delle opzioni */
+            min-width: 200px;   /* Larghezza minima per evitare che sia troppo stretto */
+        }
+
+        /* Stile per la casella di selezione dei valori selezionati */
+        .selected-values {
+            border: 1px solid #ccc;
+            padding: 5px;
+            min-height: 100px;  /* Altezza minima per evitare che sia troppo piccolo */
+            margin-top: 10px;
+        }
+
+        /* Stile per gli elementi nella casella dei valori selezionati */
+        .selected-values li {
+            cursor: pointer;
+        }
+
+        /* Stile per evidenziare gli elementi selezionati nella casella dei valori selezionati */
+        .selected-values li.selected {
+            background-color: #f0f0f0;
+        }
+    </style>
+</head>
+<body>
+    <h2>Create Flow</h2>
+    <form id="createFlowForm">
+        <div style="display: flex;">
+            <div style="flex: 1;">
+                <label for="metrics">Select Metrics:</label><br>
+                <select id="metrics" multiple>
+                    <!-- Popola con script def. giù -->
+                </select><br><br>
+            </div>
+            <div style="flex: 1;">
+                <label for="dimensions">Select Dimensions:</label><br>
+                <select id="dimensions" multiple>
+                    <!-- Popola con script def. giù-->
+                </select><br><br>
+            </div>
+        </div>
+
+        <div style="display: flex;">
+            <div style="flex: 1;">
+                <h3>Selected Metrics:</h3>
+                <ul id="selectedMetrics" class="selected-values">
+                    <!-- Valori selezionati metrics -->
+                </ul>
+            </div>
+            <div style="flex: 1;">
+                <h3>Selected Dimensions:</h3>
+                <ul id="selectedDimensions" class="selected-values">
+                    <!-- Valori selezionati dimensions -->
+                </ul>
+            </div>
+        </div>
+
+        <input type="submit" value="Create Flow">
+    </form>
+
+    <script>
+
+    // Per caricare dinamicamente i valori per la selezione di metriche e dimensioni
+    // Lancio due Promise asyn. al mio backend, dove ho implementato delle GET a Dataddo
+
+    fetch('/get_metrics')
+            .then(response => response.json())  //converto in risposta JSON
+            .then(data => {
+                console.log("Dati delle metriche ottenuti:", data);         // Controlla i dati ottenuti
+                const metricsSelect = document.getElementById('metrics');   //riferimento a elemento con ID metrics
+                data.metrics.forEach(metric => {                            //loop della risposta json
+                    const option = document.createElement('option');        //viene creato elemento option per rappresentare le scelte selezionabili su html
+                    option.value = metric.value;                            //assegnazione di valore
+                    option.textContent = metric.value;                      // Utilizza il valore come testo dell'opzione
+                    metricsSelect.appendChild(option);                      //append alla struttura
+                });
+            })
+            .catch(error => {
+                console.error('Errore nella richiesta GET per ottenere i dati delle metriche:', error);
+            });
+
+    // Effettua una richiesta GET per ottenere i dati delle dimensioni
+    fetch('/get_dimensions')
+        .then(response => response.json())
+        .then(data => {
+            console.log("Dati delle dimensioni ottenuti:", data);          //COME SU !!!
+            const dimensionsSelect = document.getElementById('dimensions');
+            data.dimensions.forEach(dimension => {
+                const option = document.createElement('option');
+                option.value = dimension.value;
+                option.textContent = dimension.value; 
+                dimensionsSelect.appendChild(option);
+            });
+        })
+        .catch(error => {
+            console.error('Errore nella richiesta GET per ottenere i dati delle dimensioni:', error);
+        });
+
+        // definisico Listener su evento di submit del form
+        document.getElementById('createFlowForm').addEventListener('submit', function(event) {
+            event.preventDefault();              // Sopprimo comportamento di default dell'evento
+
+            //Ottengo risultati delle selezioni!!
+            //step 1: dato l'elemento con ID 'selectedMetrics', prendo tutto ciò che è racchiuso nei tag <li>
+            var selectedMetricsList = document.getElementById("selectedMetrics").getElementsByTagName("li");
+            var selectedDimensionsList = document.getElementById("selectedDimensions").getElementsByTagName("li");
+
+            //step 2: itero, pushando il contentuto Testuale (rimuovendo i tag) per poi passargli alla POST
+            var selectedMetricsValues = [];
+            for (var i = 0; i < selectedMetricsList.length; i++) {
+                selectedMetricsValues.push(selectedMetricsList[i].textContent.trim());
+            }
+
+            //step 2.1: uguale a sù
+            var selectedDimensionsValues = [];
+            for (var i = 0; i < selectedDimensionsList.length; i++) {
+                selectedDimensionsValues.push(selectedDimensionsList[i].textContent.trim());
+            }
+
+            // Get cookies
+            fetch('/get-cookies', {
+                method: 'GET',
+                credentials: 'same-origin' // Include cookies
+            })
+            .then(cookieResponse => {
+                if (cookieResponse.ok) {
+                    return cookieResponse.json();
+                } else {
+                    throw new Error('Failed to get cookies.');
+                }
+            })
+            .then(cookies => {
+                //ottengo token
+                const csrfToken = cookies.csrfToken;
+
+                // Passo il token CSRF e le selezioni di metriche e dimensioni al mio backend per finalizzare il flow
+                fetch('/finalize/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken 
+                    },
+                    body: JSON.stringify({
+                        metrics: selectedMetricsValues,
+                        dimensions: selectedDimensionsValues
+                    })
+                })
+                .then(response => {
+                    if (response.ok) {
+                        console.log('Flow created successfully.');
+                        return response.json(); } 
+                    else {
+                        console.error('Failed to create flow.');
+                    }
+                    })
+                .then(data => {
+                    if (data && data.redirect_url) {  //controllo se campo è definito e se contiene 'redirect_url
+                        window.location.href = data.redirect_url; // fai ridirect
+                    }
+                })
+                .catch(error => {
+                    console.error('An error occurred:', error);
+                });
+
+            })
+            .catch(error => {
+                console.error('An error occurred while fetching cookies:', error);
+                });
+            });
+
+        // NOTA BENE --> listener particolare per gestire le selection box
+        //document.addEventListener('DOMContentLoaded', function() { ... }) sta aspettando 
+        //che l'intero documento HTML sia stato completamente caricato prima di eseguire il 
+        //codice all'interno della funzione
+        document.addEventListener('DOMContentLoaded', function() {
+            const metricsSelect = document.getElementById('metrics');
+            const dimensionsSelect = document.getElementById('dimensions');
+            const selectedMetricsList = document.getElementById('selectedMetrics');
+            const selectedDimensionsList = document.getElementById('selectedDimensions');
+
+            //aggiunge listener evento al doppio click sull'elemento e chiama funzione def. giù
+            metricsSelect.addEventListener('dblclick', function() {
+                moveSelectedOptions(metricsSelect, selectedMetricsList);
+            });
+
+            dimensionsSelect.addEventListener('dblclick', function() {
+                moveSelectedOptions(dimensionsSelect, selectedDimensionsList);
+            });
+        });
+
+        function moveSelectedOptions(sourceSelect, targetList) {
+            const selectedOptions = Array.from(sourceSelect.selectedOptions);  //converto le selezioni utente, in array così itero 
+            selectedOptions.forEach(option => {
+                targetList.appendChild(createListItem(option.textContent));  //aggiungo alle selezioni il tag <li> e aggiungo a targetlist
+            });
+        }
+
+        function createListItem(text) {
+            const listItem = document.createElement('li');    //aggiungo i tag
+            listItem.textContent = text;
+            return listItem;
+        }
+    </script>
+</body>
+</html>
